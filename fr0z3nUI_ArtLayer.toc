@@ -1,0 +1,9 @@
+## Interface: 120000
+## Title: |cff00ccfffr0z3nUI|r ArtLayer
+## Notes: Frame strata / draw-layer helper. /fal
+## Author: fr0z3nights
+## Version: 2026.01.19
+## SavedVariables: fr0z3nUI_ArtLayerDB
+
+fr0z3nUI_ArtLayer.lua
+fr0z3nUI_ArtLayer_UI.lua
