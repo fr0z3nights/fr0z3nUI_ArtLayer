@@ -24,6 +24,26 @@ local function SortedKeys(t)
   return out
 end
 
+local function HasModernMenu()
+  local mu = _G and rawget(_G, "MenuUtil")
+  return type(mu) == "table" and type(mu.CreateContextMenu) == "function"
+end
+
+local function OpenModernMenu(anchor, build)
+  local mu = _G and rawget(_G, "MenuUtil")
+  if not (type(mu) == "table" and type(mu.CreateContextMenu) == "function") then return false end
+  mu.CreateContextMenu(anchor, function(_, root)
+    if type(build) == "function" then
+      build(root)
+    end
+  end)
+  return true
+end
+
+local function GetDropDownClickTarget(dd)
+  return (dd and dd.Button) or dd
+end
+
 local function SetShown(frame, shown)
   if not frame then return end
   if shown then
@@ -174,20 +194,40 @@ local function RefreshWidgetList()
   local keys = SortedKeys(db and db.widgets or {})
   UI.widgetKeys = keys
 
-  UIDropDownMenu_Initialize(UI.widgetDD, function(_, level)
-    local info = UIDropDownMenu_CreateInfo()
+  if HasModernMenu() then
+    local target = GetDropDownClickTarget(UI.widgetDD)
+    if target and target.SetScript then
+      target:SetScript("OnClick", function(btn)
+        OpenModernMenu(btn, function(root)
+          if root and root.CreateTitle then
+            root:CreateTitle("Widget")
+          end
 
-    info.text = "(select widget)"
-    info.func = function() SelectWidget(nil) end
-    UIDropDownMenu_AddButton(info, level)
-
-    for _, key in ipairs(keys) do
-      info = UIDropDownMenu_CreateInfo()
-      info.text = key
-      info.func = function() SelectWidget(key) end
-      UIDropDownMenu_AddButton(info, level)
+          if root and root.CreateButton then
+            root:CreateButton("(select widget)", function() SelectWidget(nil) end)
+            for _, key in ipairs(keys) do
+              root:CreateButton(key, function() SelectWidget(key) end)
+            end
+          end
+        end)
+      end)
     end
-  end)
+  else
+    UIDropDownMenu_Initialize(UI.widgetDD, function(_, level)
+      local info = UIDropDownMenu_CreateInfo()
+
+      info.text = "(select widget)"
+      info.func = function() SelectWidget(nil) end
+      UIDropDownMenu_AddButton(info, level)
+
+      for _, key in ipairs(keys) do
+        info = UIDropDownMenu_CreateInfo()
+        info.text = key
+        info.func = function() SelectWidget(key) end
+        UIDropDownMenu_AddButton(info, level)
+      end
+    end)
+  end
 
   if UI.selectedKey and db and db.widgets and not db.widgets[UI.selectedKey] then
     UI.selectedKey = nil
@@ -469,44 +509,122 @@ local function CreateUI()
   EBApply(texEB)
   EBApply(subEB)
 
-  UIDropDownMenu_Initialize(strataDD, function(_, level)
+  do
     local items = { "(default)", "BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "TOOLTIP" }
-    for _, s in ipairs(items) do
-      local info = UIDropDownMenu_CreateInfo()
-      info.text = s
-      info.func = function()
-        UIDropDownMenu_SetText(strataDD, s)
-        SaveAndApply()
+    if HasModernMenu() then
+      local target = GetDropDownClickTarget(strataDD)
+      if target and target.SetScript then
+        target:SetScript("OnClick", function(btn)
+          OpenModernMenu(btn, function(root)
+            if root and root.CreateTitle then root:CreateTitle("Strata") end
+            for _, s in ipairs(items) do
+              if root and root.CreateRadio then
+                root:CreateRadio(s, function() return GetDropDownText(strataDD) == s end, function()
+                  UIDropDownMenu_SetText(strataDD, s)
+                  SaveAndApply()
+                end)
+              elseif root and root.CreateButton then
+                root:CreateButton(s, function()
+                  UIDropDownMenu_SetText(strataDD, s)
+                  SaveAndApply()
+                end)
+              end
+            end
+          end)
+        end)
       end
-      UIDropDownMenu_AddButton(info, level)
+    else
+      UIDropDownMenu_Initialize(strataDD, function(_, level)
+        for _, s in ipairs(items) do
+          local info = UIDropDownMenu_CreateInfo()
+          info.text = s
+          info.func = function()
+            UIDropDownMenu_SetText(strataDD, s)
+            SaveAndApply()
+          end
+          UIDropDownMenu_AddButton(info, level)
+        end
+      end)
     end
-  end)
+  end
 
-  UIDropDownMenu_Initialize(layerDD, function(_, level)
+  do
     local items = { "BACKGROUND", "BORDER", "ARTWORK", "OVERLAY", "HIGHLIGHT" }
-    for _, s in ipairs(items) do
-      local info = UIDropDownMenu_CreateInfo()
-      info.text = s
-      info.func = function()
-        UIDropDownMenu_SetText(layerDD, s)
-        SaveAndApply()
+    if HasModernMenu() then
+      local target = GetDropDownClickTarget(layerDD)
+      if target and target.SetScript then
+        target:SetScript("OnClick", function(btn)
+          OpenModernMenu(btn, function(root)
+            if root and root.CreateTitle then root:CreateTitle("Layer") end
+            for _, s in ipairs(items) do
+              if root and root.CreateRadio then
+                root:CreateRadio(s, function() return GetDropDownText(layerDD) == s end, function()
+                  UIDropDownMenu_SetText(layerDD, s)
+                  SaveAndApply()
+                end)
+              elseif root and root.CreateButton then
+                root:CreateButton(s, function()
+                  UIDropDownMenu_SetText(layerDD, s)
+                  SaveAndApply()
+                end)
+              end
+            end
+          end)
+        end)
       end
-      UIDropDownMenu_AddButton(info, level)
+    else
+      UIDropDownMenu_Initialize(layerDD, function(_, level)
+        for _, s in ipairs(items) do
+          local info = UIDropDownMenu_CreateInfo()
+          info.text = s
+          info.func = function()
+            UIDropDownMenu_SetText(layerDD, s)
+            SaveAndApply()
+          end
+          UIDropDownMenu_AddButton(info, level)
+        end
+      end)
     end
-  end)
+  end
 
-  UIDropDownMenu_Initialize(blendDD, function(_, level)
+  do
     local items = { "BLEND", "ADD", "MOD", "ALPHAKEY" }
-    for _, s in ipairs(items) do
-      local info = UIDropDownMenu_CreateInfo()
-      info.text = s
-      info.func = function()
-        UIDropDownMenu_SetText(blendDD, s)
-        SaveAndApply()
+    if HasModernMenu() then
+      local target = GetDropDownClickTarget(blendDD)
+      if target and target.SetScript then
+        target:SetScript("OnClick", function(btn)
+          OpenModernMenu(btn, function(root)
+            if root and root.CreateTitle then root:CreateTitle("Blend") end
+            for _, s in ipairs(items) do
+              if root and root.CreateRadio then
+                root:CreateRadio(s, function() return GetDropDownText(blendDD) == s end, function()
+                  UIDropDownMenu_SetText(blendDD, s)
+                  SaveAndApply()
+                end)
+              elseif root and root.CreateButton then
+                root:CreateButton(s, function()
+                  UIDropDownMenu_SetText(blendDD, s)
+                  SaveAndApply()
+                end)
+              end
+            end
+          end)
+        end)
       end
-      UIDropDownMenu_AddButton(info, level)
+    else
+      UIDropDownMenu_Initialize(blendDD, function(_, level)
+        for _, s in ipairs(items) do
+          local info = UIDropDownMenu_CreateInfo()
+          info.text = s
+          info.func = function()
+            UIDropDownMenu_SetText(blendDD, s)
+            SaveAndApply()
+          end
+          UIDropDownMenu_AddButton(info, level)
+        end
+      end)
     end
-  end)
+  end
 
   addBtn:SetScript("OnClick", function()
     StaticPopup_Show("FAL_CREATE_WIDGET")
