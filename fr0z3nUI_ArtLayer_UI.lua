@@ -250,7 +250,12 @@ local function CreateWidgetDialog()
     whileDead = true,
     hideOnEscape = true,
     OnAccept = function(self)
-      local key = self.editBox:GetText() or ""
+      local eb = self.editBox or self.EditBox
+      if not (eb and eb.GetText) then
+        Print("Popup edit box unavailable")
+        return
+      end
+      local key = eb:GetText() or ""
       key = key:gsub("^%s+", ""):gsub("%s+$", "")
       if key == "" then
         Print("Invalid key")
@@ -280,11 +285,15 @@ local function CreateWidgetDialog()
     end,
     EditBoxOnEnterPressed = function(self)
       local parent = self:GetParent()
-      parent.button1:Click()
+      local b1 = parent and (parent.button1 or parent.Button1)
+      if b1 and b1.Click then
+        b1:Click()
+      end
     end,
     OnShow = function(self)
-      self.editBox:SetText("")
-      self.editBox:SetFocus()
+      local eb = self.editBox or self.EditBox
+      if eb and eb.SetText then eb:SetText("") end
+      if eb and eb.SetFocus then eb:SetFocus() end
     end,
   }
 end
@@ -313,7 +322,7 @@ local function CreateUI()
   if UI then return UI end
   CreateWidgetDialog()
 
-  local f = CreateFrame("Frame", "fr0z3nUI_ArtLayer_Config", UIParent, "BackdropTemplate")
+  local f = CreateFrame("Frame", "fr0z3nUI_ArtLayer_Config", UIParent, "BasicFrameTemplateWithInset")
   f:SetSize(520, 420)
   f:SetPoint("CENTER")
   f:SetMovable(true)
@@ -321,24 +330,15 @@ local function CreateUI()
   f:RegisterForDrag("LeftButton")
   f:SetScript("OnDragStart", f.StartMoving)
   f:SetScript("OnDragStop", f.StopMovingOrSizing)
-  f:SetBackdrop({
-    bgFile = "Interface/Tooltips/UI-Tooltip-Background",
-    edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-    tile = true,
-    tileSize = 16,
-    edgeSize = 16,
-    insets = { left = 4, right = 4, top = 4, bottom = 4 },
-  })
-  f:SetBackdropColor(0, 0, 0, 0.85)
   f:Hide()
 
-  local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  local title = f.TitleText or f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  title:ClearAllPoints()
   title:SetPoint("TOPLEFT", 12, -10)
-  title:SetText("ArtLayer Widgets")
+  title:SetText("|cff00ccff[FAL]|r ArtLayer")
 
-  local close = CreateButton(f, "Close", 80, 22)
-  close:SetPoint("TOPRIGHT", -12, -10)
-  close:SetScript("OnClick", function() f:Hide() end)
+  local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+  close:SetPoint("TOPRIGHT", f, "TOPRIGHT", 2, 2)
 
   -- Widget row
   local widgetLabel = CreateLabel(f, "Widget:")
