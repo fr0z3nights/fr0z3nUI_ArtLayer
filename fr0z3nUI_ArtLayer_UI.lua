@@ -101,13 +101,108 @@ local function CreateSlider(parent, label, minV, maxV, step)
   s.Text:SetText(label)
   s.Low:SetText(tostring(minV))
   s.High:SetText(tostring(maxV))
+
+  -- OptionsSliderTemplate provides Text/Low/High but not a numeric value label.
+  -- Keep a dedicated Value FontString so we can show the current slider value.
+  if not s.Value then
+    local fs = s:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fs:SetPoint("TOPRIGHT", s, "TOPRIGHT", 0, 16)
+    fs:SetJustifyH("RIGHT")
+    fs:SetText("")
+    s.Value = fs
+  end
   return s
+end
+
+local function GetSliderMinMax(s, defaultMin, defaultMax)
+  if s and s.GetMinMaxValues then
+    local minV, maxV = s:GetMinMaxValues()
+    minV, maxV = tonumber(minV), tonumber(maxV)
+    if minV and maxV then
+      return minV, maxV
+    end
+  end
+  return defaultMin, defaultMax
+end
+
+local function SetSliderValueLabel(s, v, fmt)
+  if not (s and s.Value and s.Value.SetText) then return end
+  local f = fmt or "%.2f"
+  s.Value:SetText(string.format(f, tonumber(v) or 0))
 end
 
 local function CreateDropDown(parent, width)
   local dd = CreateFrame("Frame", nil, parent, "UIDropDownMenuTemplate")
   UIDropDownMenu_SetWidth(dd, width or 140)
   return dd
+end
+
+local function CreateMultiLineBox(parent, width, height)
+  local sf = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+  sf:SetSize(width or 220, height or 70)
+
+  local eb = CreateFrame("EditBox", nil, sf)
+  eb:SetAutoFocus(false)
+  eb:SetMultiLine(true)
+  eb:SetFontObject("ChatFontNormal")
+  eb:SetWidth((width or 220) - 18)
+  eb:SetText("")
+  eb:SetScript("OnEscapePressed", function(self)
+    self:ClearFocus()
+  end)
+
+  sf:SetScrollChild(eb)
+  sf.EditBox = eb
+  return sf
+end
+
+local function Trim(s)
+  s = tostring(s or "")
+  return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function ParseCharList(text)
+  text = tostring(text or "")
+  text = text:gsub("\r", "")
+  text = text:gsub("\n", ",")
+  local out = {}
+  for part in text:gmatch("[^,]+") do
+    part = Trim(part)
+    if part ~= "" then
+      out[#out + 1] = part
+    end
+  end
+  return out
+end
+
+local function JoinLines(list)
+  if type(list) ~= "table" then return "" end
+  local out = {}
+  for _, v in ipairs(list) do
+    local s = Trim(v)
+    if s ~= "" then out[#out + 1] = s end
+  end
+  return table.concat(out, "\n")
+end
+
+local function RemoveCondsOfType(conds, typ)
+  if type(conds) ~= "table" then return end
+  for i = #conds, 1, -1 do
+    local c = conds[i]
+    if type(c) == "table" and c.type == typ then
+      table.remove(conds, i)
+    end
+  end
+end
+
+local function FindCond(conds, typ)
+  if type(conds) ~= "table" then return nil end
+  for _, c in ipairs(conds) do
+    if type(c) == "table" and c.type == typ then
+      return c
+    end
+  end
+  return nil
 end
 
 local UI
@@ -153,11 +248,19 @@ local function RefreshControls()
 
   UI.typeValue:SetText(tostring(w.type or "texture"))
 
-  UI.alpha:SetValue(Clamp(w.alpha, 0, 1))
-  UI.alpha.Value:SetText(string.format("%.2f", Clamp(w.alpha, 0, 1)))
+  do
+    local minV, maxV = GetSliderMinMax(UI.alpha, 0, 1)
+    local v = Clamp(w.alpha, minV, maxV)
+    UI.alpha:SetValue(v)
+    SetSliderValueLabel(UI.alpha, v)
+  end
 
-  UI.scale:SetValue(Clamp(w.scale, 0.05, 10))
-  UI.scale.Value:SetText(string.format("%.2f", Clamp(w.scale, 0.05, 10)))
+  do
+    local minV, maxV = GetSliderMinMax(UI.scale, 0.05, 10)
+    local v = Clamp(w.scale, minV, maxV)
+    UI.scale:SetValue(v)
+    SetSliderValueLabel(UI.scale, v)
+  end
 
   UI.w:SetText(tostring(w.w or ""))
   UI.h:SetText(tostring(w.h or ""))
@@ -165,6 +268,31 @@ local function RefreshControls()
   UI.point:SetText(tostring(w.point or "CENTER"))
   UI.x:SetText(tostring(w.x or 0))
   UI.y:SetText(tostring(w.y or 0))
+
+  do
+    local conds = w.conds
+    local fc = FindCond(conds, "faction")
+    local want = fc and tostring(fc.value or "") or ""
+    if want ~= "Alliance" and want ~= "Horde" then
+      want = "Both"
+    end
+    UIDropDownMenu_SetText(UI.factionDD, want)
+
+    local pc = FindCond(conds, "player")
+    local list = nil
+    if pc and type(pc.list) == "table" then
+      list = pc.list
+    elseif pc and type(pc.list) == "string" then
+      list = ParseCharList(pc.list)
+    end
+    if UI.chars and UI.chars.EditBox and UI.chars.EditBox.SetText then
+      UI.chars.EditBox:SetText(JoinLines(list))
+      UI.chars.EditBox:HighlightText(0, 0)
+    end
+    if UI.chars and UI.chars.SetVerticalScroll then
+      UI.chars:SetVerticalScroll(0)
+    end
+  end
 
   UIDropDownMenu_SetText(UI.strataDD, tostring(w.strata or "(default)"))
 
@@ -323,7 +451,7 @@ local function CreateUI()
   CreateWidgetDialog()
 
   local f = CreateFrame("Frame", "fr0z3nUI_ArtLayer_Config", UIParent, "BasicFrameTemplateWithInset")
-  f:SetSize(520, 420)
+  f:SetSize(700, 560)
   f:SetPoint("CENTER")
   f:SetMovable(true)
   f:EnableMouse(true)
@@ -415,12 +543,15 @@ local function CreateUI()
 
   local textureRow = CreateFrame("Frame", nil, right)
   textureRow:SetPoint("TOPLEFT", strataLabel, "BOTTOMLEFT", 0, -22)
-  textureRow:SetSize(220, 60)
+  textureRow:SetSize(320, 60)
 
   local textureLabel = CreateLabel(textureRow, "Texture:")
   textureLabel:SetPoint("TOPLEFT", 0, 0)
-  local texEB = CreateEditBox(textureRow, 220)
+  local texEB = CreateEditBox(textureRow, 240)
   texEB:SetPoint("TOPLEFT", textureLabel, "BOTTOMLEFT", 0, -4)
+
+  local texPickBtn = CreateButton(textureRow, "Pick", 60, 22)
+  texPickBtn:SetPoint("LEFT", texEB, "RIGHT", 8, 0)
 
   local layerRow = CreateFrame("Frame", nil, right)
   layerRow:SetPoint("TOPLEFT", textureRow, "BOTTOMLEFT", 0, -16)
@@ -450,8 +581,14 @@ local function CreateUI()
     widget.enabled = enabled:GetChecked() and true or false
     widget.clickthrough = clickthrough:GetChecked() and true or false
 
-    widget.alpha = Clamp(alpha:GetValue(), 0, 1)
-    widget.scale = Clamp(scale:GetValue(), 0.05, 10)
+    do
+      local minV, maxV = GetSliderMinMax(alpha, 0, 1)
+      widget.alpha = Clamp(alpha:GetValue(), minV, maxV)
+    end
+    do
+      local minV, maxV = GetSliderMinMax(scale, 0.05, 10)
+      widget.scale = Clamp(scale:GetValue(), minV, maxV)
+    end
 
     widget.w = tonumber(wEB:GetText()) or widget.w
     widget.h = tonumber(hEB:GetText()) or widget.h
@@ -474,6 +611,26 @@ local function CreateUI()
       widget.blend = GetDropDownText(blendDD) or widget.blend
     end
 
+    widget.conds = widget.conds or {}
+
+    do
+      local txt = GetDropDownText(UI.factionDD)
+      local want = (txt == "Alliance" or txt == "Horde") and txt or ""
+      RemoveCondsOfType(widget.conds, "faction")
+      if want ~= "" then
+        table.insert(widget.conds, { type = "faction", value = want })
+      end
+    end
+
+    do
+      local raw = (UI.chars and UI.chars.EditBox and UI.chars.EditBox.GetText) and UI.chars.EditBox:GetText() or ""
+      local list = ParseCharList(raw)
+      RemoveCondsOfType(widget.conds, "player")
+      if list[1] then
+        table.insert(widget.conds, { type = "player", list = list })
+      end
+    end
+
     ApplySelected()
   end
 
@@ -481,18 +638,21 @@ local function CreateUI()
   clickthrough:SetScript("OnClick", function() SaveAndApply() end)
 
   alpha:SetScript("OnValueChanged", function(_, v)
-    alpha.Value:SetText(string.format("%.2f", v))
+    SetSliderValueLabel(alpha, v)
     SaveAndApply()
   end)
 
   scale:SetScript("OnValueChanged", function(_, v)
-    scale.Value:SetText(string.format("%.2f", v))
+    SetSliderValueLabel(scale, v)
     SaveAndApply()
   end)
 
   local function EBApply(eb)
     eb:SetScript("OnEnterPressed", function(self)
       self:ClearFocus()
+      SaveAndApply()
+    end)
+    eb:SetScript("OnEditFocusLost", function()
       SaveAndApply()
     end)
     eb:SetScript("OnEscapePressed", function(self)
@@ -508,6 +668,39 @@ local function CreateUI()
   EBApply(yEB)
   EBApply(texEB)
   EBApply(subEB)
+
+  -- Conditions
+  local condLabel = CreateLabel(controls, "Conditions:")
+  condLabel:SetPoint("TOPLEFT", posLabel, "BOTTOMLEFT", 0, -18)
+
+  local factionLabel = CreateLabel(controls, "Faction:")
+  factionLabel:SetPoint("TOPLEFT", condLabel, "BOTTOMLEFT", 0, -10)
+  local factionDD = CreateDropDown(controls, 140)
+  factionDD:SetPoint("LEFT", factionLabel, "RIGHT", -16, -2)
+  UIDropDownMenu_SetText(factionDD, "Both")
+
+  local charsLabel = CreateLabel(controls, "Characters (one per line):")
+  charsLabel:SetPoint("TOPLEFT", factionLabel, "BOTTOMLEFT", 0, -14)
+  local chars = CreateMultiLineBox(controls, 240, 70)
+  chars:SetPoint("TOPLEFT", charsLabel, "BOTTOMLEFT", 0, -6)
+
+  -- Keep the texture/layer controls visible even at odd UI scales by placing
+  -- the whole "right" section below the conditions block.
+  if right and right.ClearAllPoints and right.SetPoint then
+    right:ClearAllPoints()
+    right:SetPoint("TOPLEFT", chars, "BOTTOMLEFT", 0, -18)
+    right:SetPoint("BOTTOMRIGHT", controls, "BOTTOMRIGHT", -6, 0)
+  end
+
+  if chars and chars.EditBox and chars.EditBox.SetScript then
+    chars.EditBox:SetScript("OnEnterPressed", function(self)
+      self:ClearFocus()
+      SaveAndApply()
+    end)
+    chars.EditBox:SetScript("OnEditFocusLost", function()
+      SaveAndApply()
+    end)
+  end
 
   do
     local items = { "(default)", "BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "TOOLTIP" }
@@ -540,6 +733,106 @@ local function CreateUI()
           info.text = s
           info.func = function()
             UIDropDownMenu_SetText(strataDD, s)
+            SaveAndApply()
+          end
+          UIDropDownMenu_AddButton(info, level)
+        end
+      end)
+    end
+  end
+
+  -- Texture presets (simple picker)
+  do
+    local presets = {
+      { "Solid (WHITE8X8)", "Interface\\Buttons\\WHITE8X8" },
+      { "Soft Glow", "Interface\\Buttons\\UI-Quickslot2" },
+      { "Dialog BG", "Interface\\DialogFrame\\UI-DialogBox-Background" },
+      { "Tooltip BG", "Interface\\Tooltips\\UI-Tooltip-Background" },
+      { "Circle (TargetingFrame)", "Interface\\TargetingFrame\\UI-StatusBar" },
+      { "Raid Icon Star", "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1" },
+      { "Raid Icon Circle", "Interface\\TargetingFrame\\UI-RaidTargetingIcon_2" },
+      { "Raid Icon Diamond", "Interface\\TargetingFrame\\UI-RaidTargetingIcon_3" },
+      { "Raid Icon Triangle", "Interface\\TargetingFrame\\UI-RaidTargetingIcon_4" },
+    }
+
+    local function SetTexturePath(path)
+      if texEB and texEB.SetText then
+        texEB:SetText(tostring(path or ""))
+      end
+      SaveAndApply()
+    end
+
+    texPickBtn:SetScript("OnClick", function(btn)
+      if HasModernMenu() then
+        OpenModernMenu(btn, function(root)
+          if root and root.CreateTitle then
+            root:CreateTitle("Texture Presets")
+          end
+          if root and root.CreateButton then
+            root:CreateButton("(clear)", function() SetTexturePath("") end)
+            for _, p in ipairs(presets) do
+              root:CreateButton(p[1], function() SetTexturePath(p[2]) end)
+            end
+          end
+        end)
+        return
+      end
+
+      if EasyMenu then
+        local menu = {
+          { text = "Texture Presets", isTitle = true, notCheckable = true },
+          { text = "(clear)", notCheckable = true, func = function() SetTexturePath("") end },
+        }
+        for _, p in ipairs(presets) do
+          menu[#menu + 1] = { text = p[1], notCheckable = true, func = function() SetTexturePath(p[2]) end }
+        end
+        UI._texMenuFrame = UI._texMenuFrame or CreateFrame("Frame", "FAL_TextureMenu", UIParent, "UIDropDownMenuTemplate")
+        EasyMenu(menu, UI._texMenuFrame, btn, 0, 0, "MENU")
+      end
+    end)
+
+    texPickBtn:SetScript("OnEnter", function()
+      if GameTooltip then
+        GameTooltip:SetOwner(texPickBtn, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Texture", 1, 1, 1)
+        GameTooltip:AddLine("Pick a built-in texture preset.")
+        GameTooltip:AddLine("You can also type a path manually:")
+        GameTooltip:AddLine("Interface\\Buttons\\WHITE8X8", 0.8, 0.8, 0.8)
+        GameTooltip:Show()
+      end
+    end)
+    texPickBtn:SetScript("OnLeave", function()
+      if GameTooltip then GameTooltip:Hide() end
+    end)
+  end
+
+  do
+    local items = { "Both", "Alliance", "Horde" }
+    if HasModernMenu() then
+      local target = GetDropDownClickTarget(factionDD)
+      if target and target.SetScript then
+        target:SetScript("OnClick", function(btn)
+          OpenModernMenu(btn, function(root)
+            if root and root.CreateTitle then root:CreateTitle("Faction") end
+            for _, s in ipairs(items) do
+              if root and root.CreateButton then
+                root:CreateButton(s, function()
+                  UIDropDownMenu_SetText(factionDD, s)
+                  SaveAndApply()
+                end)
+              end
+            end
+          end)
+        end)
+      end
+    else
+      UIDropDownMenu_Initialize(factionDD, function(_, level)
+        local info = UIDropDownMenu_CreateInfo()
+        for _, s in ipairs(items) do
+          info = UIDropDownMenu_CreateInfo()
+          info.text = s
+          info.func = function()
+            UIDropDownMenu_SetText(factionDD, s)
             SaveAndApply()
           end
           UIDropDownMenu_AddButton(info, level)
@@ -665,9 +958,13 @@ local function CreateUI()
     x = xEB,
     y = yEB,
 
+    factionDD = factionDD,
+    chars = chars,
+
     textureRow = textureRow,
     layerRow = layerRow,
     texture = texEB,
+    texturePick = texPickBtn,
     sub = subEB,
   }
 

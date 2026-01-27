@@ -171,6 +171,11 @@ end
 local function NormalizeTexturePath(tex)
   tex = tostring(tex or "")
   tex = tex:gsub("/", "\\")
+  tex = tex:gsub("\\+", "\\")
+  -- Prefer extension-less paths for consistency.
+  tex = tex:gsub("%.tga$", ""):gsub("%.blp$", "")
+  -- Canonicalize common casing variants.
+  tex = tex:gsub("^Interface\\Addons\\", "Interface\\AddOns\\")
   if tex == "" then return "" end
   if tex:find("^Interface\\") then
     return tex
@@ -201,6 +206,44 @@ local function PlayerFaction()
     return f
   end
   return nil
+end
+
+local function ConditionPlayer(c)
+  local key = GetPlayerKey()
+  if not key then return false end
+  local nameOnly = key:match("^([^-]+)") or key
+
+  local list = c and c.list
+  if type(list) == "string" then
+    list = SplitCSV(list)
+  end
+  if type(list) ~= "table" then return false end
+
+  local ignoreRealm = (c and c.ignoreRealm) and true or false
+
+  for _, who in ipairs(list) do
+    who = tostring(who or "")
+    who = who:gsub("^%s+", ""):gsub("%s+$", "")
+    if who ~= "" then
+      if ignoreRealm then
+        local wantName = who:match("^([^-]+)") or who
+        if wantName:lower() == nameOnly:lower() then
+          return true
+        end
+      else
+        if who:find("-", 1, true) then
+          if who:lower() == key:lower() then
+            return true
+          end
+        else
+          if who:lower() == nameOnly:lower() then
+            return true
+          end
+        end
+      end
+    end
+  end
+  return false
 end
 
 local function HasMail()
@@ -422,6 +465,8 @@ local function EvaluateWidget(db, widget)
       local inCombat = IsInCombat()
       if want == "in" and not inCombat then return false end
       if want == "out" and inCombat then return false end
+    elseif c.type == "player" then
+      if not ConditionPlayer(c) then return false end
     end
   end
 
