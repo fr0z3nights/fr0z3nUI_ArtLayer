@@ -348,7 +348,11 @@ local function ApplyWidgetFrameProps(frame, widget)
 
   local clickthrough = (widget.clickthrough ~= nil) and (widget.clickthrough and true or false) or true
   if frame.EnableMouse then
-    frame:EnableMouse(not clickthrough)
+    if frame._falForceShow then
+      frame:EnableMouse(true)
+    else
+      frame:EnableMouse(not clickthrough)
+    end
   end
 
   local w = Clamp(widget.w or 128, 1, 4096)
@@ -499,6 +503,11 @@ local function ApplyWidget(key)
   end
 
   local show = EvaluateWidget(db, w)
+  -- UI helpers: while a widget is being positioned, force it visible even if its
+  -- normal conditions would hide it.
+  if frame._falForceShow then
+    show = true
+  end
   if show then
     frame:Show()
     if WIDGET_ROOT and not WIDGET_ROOT:IsShown() then WIDGET_ROOT:Show() end
@@ -583,6 +592,9 @@ ns.EnsureDB = EnsureDB
 ns.NormalizeTexturePath = NormalizeTexturePath
 ns.ApplyWidget = ApplyWidget
 ns.ApplyAllWidgets = ApplyAllWidgets
+ns.GetWidgetFrame = function(key)
+  return widgetFrames and widgetFrames[key] or nil
+end
 
 local function SetWidgetSize(key, w, h)
   local db = EnsureDB()

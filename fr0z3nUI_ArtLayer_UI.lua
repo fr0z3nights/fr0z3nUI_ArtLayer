@@ -245,6 +245,9 @@ local function RefreshControls()
 
   UI.enabled:SetChecked(w.enabled)
   UI.clickthrough:SetChecked(w.clickthrough and true or false)
+  if UI.unlockDrag then
+    UI.unlockDrag:SetChecked((UI._dragKey ~= nil and UI._dragKey == UI.selectedKey) and true or false)
+  end
 
   UI.typeValue:SetText(tostring(w.type or "texture"))
 
@@ -311,6 +314,9 @@ local function RefreshControls()
 end
 
 local function SelectWidget(key)
+  if UI and UI._dragKey and UI._dragKey ~= key and UI._disableDragMode then
+    UI._disableDragMode()
+  end
   UI.selectedKey = key
   UIDropDownMenu_SetText(UI.widgetDD, key or "(none)")
   RefreshControls()
@@ -458,6 +464,11 @@ local function CreateUI()
   f:RegisterForDrag("LeftButton")
   f:SetScript("OnDragStart", f.StartMoving)
   f:SetScript("OnDragStop", f.StopMovingOrSizing)
+  f:SetScript("OnHide", function()
+    if UI and UI._disableDragMode then
+      UI._disableDragMode()
+    end
+  end)
   f:Hide()
 
   local title = f.TitleText or f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -499,8 +510,15 @@ local function CreateUI()
   local clickthrough = CreateCheck(controls, "Clickthrough")
   clickthrough:SetPoint("LEFT", enabled, "RIGHT", 120, 0)
 
+  local unlockDrag = CreateCheck(controls, "Unlock (drag)")
+  unlockDrag:SetPoint("TOPLEFT", enabled, "BOTTOMLEFT", 0, -8)
+
+  local unlockHint = controls:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  unlockHint:SetPoint("LEFT", unlockDrag.text, "RIGHT", 8, 0)
+  unlockHint:SetText("Drag the widget to reposition")
+
   local typeLabel = CreateLabel(controls, "Type:")
-  typeLabel:SetPoint("TOPLEFT", enabled, "BOTTOMLEFT", 0, -12)
+  typeLabel:SetPoint("TOPLEFT", unlockDrag, "BOTTOMLEFT", 0, -10)
   local typeValue = controls:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   typeValue:SetPoint("LEFT", typeLabel, "RIGHT", 6, 0)
   typeValue:SetText("-")
@@ -530,6 +548,108 @@ local function CreateUI()
   xEB:SetPoint("LEFT", pointEB, "RIGHT", 8, 0)
   local yEB = CreateEditBox(controls, 60)
   yEB:SetPoint("LEFT", xEB, "RIGHT", 8, 0)
+
+  -- Drag / unlock helpers (UI-only; does not persist as a setting)
+  local function DisableDragMode()
+    if not UI or not UI._dragKey then return end
+    local key = UI._dragKey
+    local widgetFrame = (ns.GetWidgetFrame and ns.GetWidgetFrame(key)) or nil
+    if widgetFrame then
+      widgetFrame._falForceShow = nil
+      if widgetFrame._falDragOverlay and widgetFrame._falDragOverlay.Hide then
+        widgetFrame._falDragOverlay:Hide()
+      end
+      if widgetFrame.SetScript then
+        widgetFrame:SetScript("OnDragStart", nil)
+        widgetFrame:SetScript("OnDragStop", nil)
+      end
+      if widgetFrame.SetMovable then
+        widgetFrame:SetMovable(false)
+      end
+    end
+    UI._dragKey = nil
+    if ns.ApplyWidget then ns.ApplyWidget(key) end
+  end
+
+  local function EnableDragMode(key)
+    if not key then return end
+    DisableDragMode()
+
+    UI._dragKey = key
+    if ns.ApplyWidget then ns.ApplyWidget(key) end
+
+    local widgetFrame = (ns.GetWidgetFrame and ns.GetWidgetFrame(key)) or nil
+    if not widgetFrame then
+      UI._dragKey = nil
+      return
+    end
+
+    widgetFrame._falForceShow = true
+    if ns.ApplyWidget then ns.ApplyWidget(key) end
+
+    if widgetFrame.SetMovable then widgetFrame:SetMovable(true) end
+    if widgetFrame.SetClampedToScreen then widgetFrame:SetClampedToScreen(true) end
+    if widgetFrame.EnableMouse then widgetFrame:EnableMouse(true) end
+    if widgetFrame.RegisterForDrag then
+      pcall(widgetFrame.RegisterForDrag, widgetFrame, "LeftButton")
+    end
+
+    if not widgetFrame._falDragOverlay and widgetFrame.CreateTexture then
+      local ov = widgetFrame:CreateTexture(nil, "OVERLAY")
+      ov:SetAllPoints(widgetFrame)
+      if ov.SetColorTexture then
+        ov:SetColorTexture(0, 1, 1, 0.12)
+      end
+      widgetFrame._falDragOverlay = ov
+    end
+    if widgetFrame._falDragOverlay and widgetFrame._falDragOverlay.Show then
+      widgetFrame._falDragOverlay:Show()
+    end
+
+    widgetFrame:SetScript("OnDragStart", function(self)
+      if self.StartMoving then self:StartMoving() end
+    end)
+
+    widgetFrame:SetScript("OnDragStop", function(self)
+      if self.StopMovingOrSizing then self:StopMovingOrSizing() end
+
+      local db = GetDB()
+      local w = db and db.widgets and db.widgets[key]
+      if type(w) == "table" then
+        local cx, cy
+        if self.GetCenter then
+          cx, cy = self:GetCenter()
+        end
+        local px, py
+        if UIParent and UIParent.GetCenter then
+          px, py = UIParent:GetCenter()
+        end
+        if cx and cy and px and py then
+          w.point = "CENTER"
+          w.x = math.floor((cx - px) + 0.5)
+          w.y = math.floor((cy - py) + 0.5)
+        else
+          local p, _, _, x, y
+          if self.GetPoint then
+            p, _, _, x, y = self:GetPoint(1)
+          end
+          w.point = tostring(p or "CENTER")
+          w.x = math.floor((tonumber(x) or 0) + 0.5)
+          w.y = math.floor((tonumber(y) or 0) + 0.5)
+        end
+        pointEB:SetText(tostring(w.point or "CENTER"))
+        xEB:SetText(tostring(w.x or 0))
+        yEB:SetText(tostring(w.y or 0))
+      end
+
+      if ns.ApplyWidget then ns.ApplyWidget(key) end
+      local f2 = (ns.GetWidgetFrame and ns.GetWidgetFrame(key)) or nil
+      if f2 then
+        f2._falForceShow = true
+        if f2._falDragOverlay and f2._falDragOverlay.Show then f2._falDragOverlay:Show() end
+      end
+    end)
+  end
 
   -- Right column: strata/layer/blend/texture
   local right = CreateFrame("Frame", nil, controls)
@@ -636,6 +756,16 @@ local function CreateUI()
 
   enabled:SetScript("OnClick", function() SaveAndApply() end)
   clickthrough:SetScript("OnClick", function() SaveAndApply() end)
+
+  unlockDrag:SetScript("OnClick", function()
+    local key = UI and UI.selectedKey
+    if unlockDrag:GetChecked() then
+      EnableDragMode(key)
+    else
+      DisableDragMode()
+    end
+    unlockDrag:SetChecked((UI and UI._dragKey and key and UI._dragKey == key) and true or false)
+  end)
 
   alpha:SetScript("OnValueChanged", function(_, v)
     SetSliderValueLabel(alpha, v)
@@ -947,6 +1077,7 @@ local function CreateUI()
 
     enabled = enabled,
     clickthrough = clickthrough,
+    unlockDrag = unlockDrag,
     typeValue = typeValue,
 
     alpha = alpha,
@@ -967,6 +1098,8 @@ local function CreateUI()
     texturePick = texPickBtn,
     sub = subEB,
   }
+
+  UI._disableDragMode = DisableDragMode
 
   RefreshWidgetList()
   return UI
