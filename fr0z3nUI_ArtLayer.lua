@@ -12,11 +12,18 @@ local function Print(msg)
   end
 end
 
+local function DebugPrint(msg)
+  local db = fr0z3nUI_ArtLayerDB
+  if not (db and db.debug) then return end
+  Print("|cffbbbbbbDBG:|r " .. tostring(msg))
+end
+
 local function EnsureDB()
   fr0z3nUI_ArtLayerDB = fr0z3nUI_ArtLayerDB or {}
   fr0z3nUI_ArtLayerDB.overrides = fr0z3nUI_ArtLayerDB.overrides or {}
   fr0z3nUI_ArtLayerDB.widgets = fr0z3nUI_ArtLayerDB.widgets or {}
   fr0z3nUI_ArtLayerDB.seen = fr0z3nUI_ArtLayerDB.seen or {}
+  if fr0z3nUI_ArtLayerDB.debug == nil then fr0z3nUI_ArtLayerDB.debug = false end
   return fr0z3nUI_ArtLayerDB
 end
 
@@ -176,6 +183,13 @@ local function NormalizeTexturePath(tex)
   tex = tex:gsub("%.tga$", ""):gsub("%.blp$", "")
   -- Canonicalize common casing variants.
   tex = tex:gsub("^Interface\\Addons\\", "Interface\\AddOns\\")
+  -- Accept common addon-relative forms.
+  if tex:match("^[Aa]dd[Oo]ns\\") then
+    tex = "Interface\\" .. tex
+  end
+  if tex:match("^[Ff][Rr]0[zZ]3[nN][Uu][Ii]_[Aa]rt[Ll]ayer\\") then
+    tex = "Interface\\AddOns\\" .. tex
+  end
   if tex == "" then return "" end
   if tex:find("^Interface\\") then
     return tex
@@ -341,7 +355,7 @@ end
 local function ApplyWidgetFrameProps(frame, widget)
   if not (frame and widget) then return end
 
-  local scale = Clamp(widget.scale or 1, 0.05, 10)
+  local scale = Clamp(tonumber(widget.scale) or 1, 0.05, 10)
   if frame.SetScale then
     frame:SetScale(scale)
   end
@@ -355,8 +369,8 @@ local function ApplyWidgetFrameProps(frame, widget)
     end
   end
 
-  local w = Clamp(widget.w or 128, 1, 4096)
-  local h = Clamp(widget.h or 128, 1, 4096)
+  local w = Clamp(tonumber(widget.w) or 128, 1, 4096)
+  local h = Clamp(tonumber(widget.h) or 128, 1, 4096)
   frame:SetSize(w, h)
 
   frame:ClearAllPoints()
@@ -372,7 +386,7 @@ local function ApplyWidgetFrameProps(frame, widget)
     SafeCall(frame, "SetFrameLevel", tonumber(widget.level) or 1)
   end
 
-  local a = Clamp(widget.alpha or 1, 0, 1)
+  local a = Clamp(tonumber(widget.alpha) or 1, 0, 1)
   if widget.type == "texture" then
     if frame.tex then
       if frame.tex.SetAlpha then frame.tex:SetAlpha(a) end
@@ -388,6 +402,9 @@ local function ApplyWidgetFrameProps(frame, widget)
       frame.model:SetAlpha(a)
     end
   end
+
+  DebugPrint(string.format("Props %s: size=%dx%d alpha=%.2f scale=%.2f point=%s x=%.1f y=%.1f",
+    tostring(widget.key or "?"), tonumber(w) or 0, tonumber(h) or 0, tonumber(a) or 0, tonumber(scale) or 0, tostring(p), tonumber(x) or 0, tonumber(y) or 0))
 end
 
 local function CreateWidgetFrame(key, widget)
@@ -451,36 +468,38 @@ local function ConditionSeen(db, cond)
 end
 
 local function EvaluateWidget(db, widget)
-  if not widget.enabled then return false end
+  if not widget.enabled then return false, "disabled" end
   local conds = widget.conds
-  if type(conds) ~= "table" then return true end
+  if type(conds) ~= "table" then return true, nil end
 
   for _, c in ipairs(conds) do
     if c.type == "faction" then
       local want = tostring(c.value or "")
       local have = PlayerFaction() or ""
-      if want ~= "" and have ~= want then return false end
+      if want ~= "" and have ~= want then return false, "faction" end
     elseif c.type == "seen" then
-      if not ConditionSeen(db, c) then return false end
+      if not ConditionSeen(db, c) then return false, "seen" end
     elseif c.type == "mail" then
-      if not HasMail() then return false end
+      if not HasMail() then return false, "mail" end
     elseif c.type == "combat" then
       local want = tostring(c.value or "in")
       local inCombat = IsInCombat()
-      if want == "in" and not inCombat then return false end
-      if want == "out" and inCombat then return false end
+      if want == "in" and not inCombat then return false, "combat(in)" end
+      if want == "out" and inCombat then return false, "combat(out)" end
     elseif c.type == "player" then
-      if not ConditionPlayer(c) then return false end
+      if not ConditionPlayer(c) then return false, "player" end
     end
   end
 
-  return true
+  return true, nil
 end
 
 local function ApplyWidget(key)
   local db = EnsureDB()
   local w = db.widgets[key]
   if type(w) ~= "table" then return end
+
+  w.key = key
 
   w.type = w.type or "texture"
   if w.enabled == nil then w.enabled = true end
@@ -494,15 +513,25 @@ local function ApplyWidget(key)
   if w.type == "texture" then
     local texPath = NormalizeTexturePath(w.texture)
     if frame.tex and texPath and texPath ~= "" then
-      frame.tex:SetTexture(texPath)
+      local ok, err = pcall(frame.tex.SetTexture, frame.tex, texPath)
+      if not ok then
+        DebugPrint(string.format("SetTexture failed for %s: %s", tostring(key), tostring(err)))
+      else
+        DebugPrint(string.format("Texture %s -> %s", tostring(key), tostring(texPath)))
+      end
+    else
+      DebugPrint(string.format("Texture %s has empty path (raw=%s)", tostring(key), tostring(w.texture)))
     end
   elseif w.type == "model" then
     if frame.model then
-      ApplyModelSpec(frame.model, w.model or {})
+      local ok, err = pcall(ApplyModelSpec, frame.model, w.model or {})
+      if not ok then
+        DebugPrint(string.format("ApplyModelSpec failed for %s: %s", tostring(key), tostring(err)))
+      end
     end
   end
 
-  local show = EvaluateWidget(db, w)
+  local show, reason = EvaluateWidget(db, w)
   -- UI helpers: while a widget is being positioned, force it visible even if its
   -- normal conditions would hide it.
   if frame._falForceShow then
@@ -511,22 +540,88 @@ local function ApplyWidget(key)
   if show then
     frame:Show()
     if WIDGET_ROOT and not WIDGET_ROOT:IsShown() then WIDGET_ROOT:Show() end
+    DebugPrint(string.format("Widget %s shown", tostring(key)))
   else
     frame:Hide()
+    DebugPrint(string.format("Widget %s hidden (%s)", tostring(key), tostring(reason or "conditions")))
   end
 end
 
 local function ApplyAllWidgets()
   local db = EnsureDB()
   local anyShown = false
+  DebugPrint("ApplyAllWidgets")
   for key in pairs(db.widgets) do
     ApplyWidget(key)
     local f = widgetFrames[key]
     if f and f.IsShown and f:IsShown() then anyShown = true end
   end
+
+  -- Hide orphan frames for widgets removed from the DB.
+  for key, f in pairs(widgetFrames) do
+    if not (db.widgets and db.widgets[key]) then
+      if f and f.Hide then f:Hide() end
+    end
+  end
   if WIDGET_ROOT then
     if anyShown then WIDGET_ROOT:Show() else WIDGET_ROOT:Hide() end
   end
+end
+
+local function RemoveWidgetFrame(key)
+  key = tostring(key or "")
+  local f = widgetFrames and widgetFrames[key] or nil
+  if not f then return end
+
+  if f.tex and f.tex.SetTexture then
+    pcall(f.tex.SetTexture, f.tex, nil)
+  end
+  if f.model and f.model.ClearModel then
+    pcall(f.model.ClearModel, f.model)
+  end
+  if f.Hide then f:Hide() end
+  widgetFrames[key] = nil
+end
+
+local function Status()
+  local db = EnsureDB()
+  local wCount = 0
+  for _ in pairs(db.widgets) do wCount = wCount + 1 end
+  local oCount = 0
+  for _ in pairs(db.overrides) do oCount = oCount + 1 end
+  Print(string.format("Status: widgets=%d overrides=%d debug=%s", wCount, oCount, db.debug and "on" or "off"))
+  if WIDGET_ROOT and WIDGET_ROOT.IsShown then
+    Print("Root: " .. (WIDGET_ROOT:IsShown() and "shown" or "hidden"))
+  else
+    Print("Root: <not created yet>")
+  end
+end
+
+local function WipeWidgets()
+  local db = EnsureDB()
+
+  -- Clear saved widget definitions.
+  db.widgets = {}
+
+  -- Remove/hide any live widget frames.
+  for key in pairs(widgetFrames) do
+    RemoveWidgetFrame(key)
+  end
+  widgetFrames = {}
+
+  if WIDGET_ROOT and WIDGET_ROOT.Hide then
+    WIDGET_ROOT:Hide()
+  end
+
+  Print("Wiped all widgets")
+end
+
+local function WipeAll()
+  local db = EnsureDB()
+  WipeWidgets()
+  db.overrides = {}
+  db.seen = {}
+  Print("Wiped overrides + seen list")
 end
 
 local function AddWidgetTexture(key, tex)
@@ -595,6 +690,7 @@ ns.ApplyAllWidgets = ApplyAllWidgets
 ns.GetWidgetFrame = function(key)
   return widgetFrames and widgetFrames[key] or nil
 end
+ns.RemoveWidgetFrame = RemoveWidgetFrame
 
 local function SetWidgetSize(key, w, h)
   local db = EnsureDB()
@@ -770,6 +866,37 @@ SlashCmdList.FR0Z3NUI_ARTLAYER = function(msg)
     Print("/fal widgets cond <key> add combat <in|out>")
     Print("/fal seen list")
     Print("/fal seen clear")
+    Print("/fal status")
+    Print("/fal debug  - toggles debug logging")
+    Print("/fal wipe widgets  - deletes all widgets")
+    Print("/fal wipe all      - deletes widgets + overrides + seen")
+    return
+  end
+
+  if cmd == "status" then
+    Status()
+    return
+  end
+
+  if cmd == "debug" then
+    local db = EnsureDB()
+    db.debug = not (db.debug and true or false)
+    Print("Debug: " .. (db.debug and "ON" or "OFF"))
+    Status()
+    return
+  end
+
+  if cmd == "wipe" or cmd == "reset" then
+    local what = tostring(rest or ""):lower()
+    if what == "widgets" or what == "widget" then
+      WipeWidgets()
+      return
+    end
+    if what == "all" or what == "db" or what == "database" then
+      WipeAll()
+      return
+    end
+    Print("Usage: /fal wipe widgets|all")
     return
   end
 

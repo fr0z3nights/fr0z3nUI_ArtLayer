@@ -131,8 +131,13 @@ local function SetSliderValueLabel(s, v, fmt)
   s.Value:SetText(string.format(f, tonumber(v) or 0))
 end
 
+local _ddCounter = 0
 local function CreateDropDown(parent, width)
-  local dd = CreateFrame("Frame", nil, parent, "UIDropDownMenuTemplate")
+  -- UIDropDownMenuTemplate uses $parent* regions; unnamed parents can cause collisions
+  -- where one dropdown's text/behavior overwrites another.
+  _ddCounter = _ddCounter + 1
+  local name = "fr0z3nUI_ArtLayer_DropDown" .. tostring(_ddCounter)
+  local dd = CreateFrame("Frame", name, parent, "UIDropDownMenuTemplate")
   UIDropDownMenu_SetWidth(dd, width or 140)
   return dd
 end
@@ -141,15 +146,41 @@ local function CreateMultiLineBox(parent, width, height)
   local sf = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
   sf:SetSize(width or 220, height or 70)
 
+  if sf.EnableMouse then sf:EnableMouse(true) end
+
   local eb = CreateFrame("EditBox", nil, sf)
   eb:SetAutoFocus(false)
   eb:SetMultiLine(true)
   eb:SetFontObject("ChatFontNormal")
-  eb:SetWidth((width or 220) - 18)
+  eb:SetPoint("TOPLEFT", 0, 0)
+  eb:SetSize((width or 220) - 18, height or 70)
+  if eb.EnableMouse then eb:EnableMouse(true) end
   eb:SetText("")
   eb:SetScript("OnEscapePressed", function(self)
     self:ClearFocus()
   end)
+
+  -- Keep the scroll child tall enough to accept clicks and allow scrolling.
+  eb:SetScript("OnTextChanged", function(self)
+    local baseH = tonumber(height) or 70
+    local textH = 0
+    if self.GetTextHeight then
+      textH = tonumber(self:GetTextHeight()) or 0
+    elseif self.GetStringHeight then
+      textH = tonumber(self:GetStringHeight()) or 0
+    end
+    local wantH = math.max(baseH, textH + 12)
+    if self.SetHeight then
+      self:SetHeight(wantH)
+    end
+  end)
+
+  -- Clicking anywhere in the scroll frame should focus the edit box.
+  if sf.SetScript then
+    sf:SetScript("OnMouseDown", function()
+      if eb and eb.SetFocus then eb:SetFocus() end
+    end)
+  end
 
   sf:SetScrollChild(eb)
   sf.EditBox = eb
@@ -235,12 +266,29 @@ local function RefreshControls()
   SetShown(UI.controls, hasWidget)
 
   if not hasWidget then
+    -- Keep sliders at sensible defaults when nothing is selected.
+    UI._suppressSave = true
+    do
+      local minV, maxV = GetSliderMinMax(UI.alpha, 0, 1)
+      local v = Clamp(1, minV, maxV)
+      UI.alpha:SetValue(v)
+      SetSliderValueLabel(UI.alpha, v)
+    end
+    do
+      local minV, maxV = GetSliderMinMax(UI.scale, 0.1, 3)
+      local v = Clamp(1, minV, maxV)
+      UI.scale:SetValue(v)
+      SetSliderValueLabel(UI.scale, v)
+    end
+    UI._suppressSave = false
     return
   end
 
+  UI._suppressSave = true
+
   w.enabled = (w.enabled ~= false)
   if w.clickthrough == nil then w.clickthrough = true end
-  if w.scale == nil then w.scale = 1 end
+  if w.scale == nil or tonumber(w.scale) == nil or tonumber(w.scale) <= 0 then w.scale = 1 end
   if w.alpha == nil then w.alpha = 1 end
 
   UI.enabled:SetChecked(w.enabled)
@@ -311,6 +359,8 @@ local function RefreshControls()
 
     UIDropDownMenu_SetText(UI.blendDD, tostring(w.blend or "BLEND"))
   end
+
+  UI._suppressSave = false
 end
 
 local function SelectWidget(key)
@@ -444,6 +494,9 @@ local function DeleteWidgetDialog(key)
       local db = GetDB()
       if db and db.widgets then
         db.widgets[key] = nil
+      end
+      if ns.RemoveWidgetFrame then
+        ns.RemoveWidgetFrame(key)
       end
       if ns.ApplyAllWidgets then ns.ApplyAllWidgets() end
       RefreshWidgetList()
@@ -695,6 +748,7 @@ local function CreateUI()
 
   -- Wire behavior
   local function SaveAndApply()
+    if UI and UI._suppressSave then return end
     local widget = GetSelectedWidget()
     if type(widget) ~= "table" then return end
 
@@ -710,12 +764,43 @@ local function CreateUI()
       widget.scale = Clamp(scale:GetValue(), minV, maxV)
     end
 
-    widget.w = tonumber(wEB:GetText()) or widget.w
-    widget.h = tonumber(hEB:GetText()) or widget.h
+    do
+      local tw = Trim(wEB:GetText())
+      if tw ~= "" then
+        widget.w = tonumber(tw) or widget.w
+      end
+    end
+    do
+      local th = Trim(hEB:GetText())
+      if th ~= "" then
+        widget.h = tonumber(th) or widget.h
+      end
+    end
 
-    widget.point = (pointEB:GetText() ~= "" and pointEB:GetText()) or widget.point or "CENTER"
-    widget.x = tonumber(xEB:GetText()) or 0
-    widget.y = tonumber(yEB:GetText()) or 0
+    do
+      local tp = Trim(pointEB:GetText())
+      if tp ~= "" then
+        widget.point = tp
+      else
+        widget.point = widget.point or "CENTER"
+      end
+    end
+    do
+      local tx = Trim(xEB:GetText())
+      if tx ~= "" then
+        widget.x = tonumber(tx) or widget.x or 0
+      else
+        widget.x = widget.x or 0
+      end
+    end
+    do
+      local ty = Trim(yEB:GetText())
+      if ty ~= "" then
+        widget.y = tonumber(ty) or widget.y or 0
+      else
+        widget.y = widget.y or 0
+      end
+    end
 
     local strataText = GetDropDownText(strataDD)
     if strataText and strataText ~= "(default)" then
@@ -725,9 +810,14 @@ local function CreateUI()
     end
 
     if widget.type ~= "model" then
-      widget.texture = texEB:GetText() or widget.texture
+      widget.texture = Trim(texEB:GetText() or "")
       widget.layer = GetDropDownText(layerDD) or widget.layer
-      widget.sub = tonumber(subEB:GetText()) or widget.sub
+      do
+        local ts = Trim(subEB:GetText())
+        if ts ~= "" then
+          widget.sub = tonumber(ts) or widget.sub
+        end
+      end
       widget.blend = GetDropDownText(blendDD) or widget.blend
     end
 
