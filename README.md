@@ -13,6 +13,20 @@ A lightweight WoW Retail addon for:
 ## Usage
 - `/fal` opens the UI.
 
+### Slash commands
+- `/fal` or `/artlayer` — open the UI
+- `/fal seen list|clear` — inspect/clear the "seen" list
+- `/fal strata <strata>` — set override strata for a named frame
+- `/fal level <number>` — set override level for a named frame
+- `/fal wipe widgets|all` — wipe widgets (or everything)
+
+### Widgets (CLI)
+- `/fal widgets add texture <key> <file.tga>`
+- `/fal widgets add model <key> <player|npc|display|file> [id]`
+- `/fal widgets set <key> pos <point> <x> <y>`
+- `/fal widgets set <key> size|pos|alpha|strata|layer ...`
+- `/fal widgets cond <key> clear|add ...`
+
 The addon stores settings in:
 - `fr0z3nUI_ArtLayerDB`
 
