@@ -146,6 +146,12 @@ local function CreateMultiLineBox(parent, width, height)
   local sf = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
   sf:SetSize(width or 220, height or 70)
 
+  -- Cleaner look: hide the scrollbar (still scrollable via mousewheel when needed).
+  if sf.ScrollBar then
+    sf.ScrollBar:Hide()
+    sf.ScrollBar.Show = sf.ScrollBar.Hide
+  end
+
   if sf.EnableMouse then sf:EnableMouse(true) end
 
   local eb = CreateFrame("EditBox", nil, sf)
@@ -153,9 +159,21 @@ local function CreateMultiLineBox(parent, width, height)
   eb:SetMultiLine(true)
   eb:SetFontObject("ChatFontNormal")
   eb:SetPoint("TOPLEFT", 0, 0)
-  eb:SetSize((width or 220) - 18, height or 70)
+  eb:SetSize((width or 220) - 4, height or 70)
   if eb.EnableMouse then eb:EnableMouse(true) end
   eb:SetText("")
+  if eb.EnableMouseWheel then eb:EnableMouseWheel(true) end
+  if eb.SetScript then
+    eb:SetScript("OnMouseWheel", function(self, delta)
+      local cur = sf.GetVerticalScroll and sf:GetVerticalScroll() or 0
+      local step = 18
+      if delta > 0 then
+        sf:SetVerticalScroll(math.max(0, cur - step))
+      else
+        sf:SetVerticalScroll(cur + step)
+      end
+    end)
+  end
   eb:SetScript("OnEscapePressed", function(self)
     self:ClearFocus()
   end)
@@ -343,6 +361,14 @@ local function RefreshControls()
     if UI.chars and UI.chars.SetVerticalScroll then
       UI.chars:SetVerticalScroll(0)
     end
+
+    local qc = FindCond(conds, "questCompleteHide")
+    if UI.questHide then
+      UI.questHide:SetChecked(qc and true or false)
+    end
+    if UI.questId and UI.questId.SetText then
+      UI.questId:SetText(qc and tostring(qc.id or "") or "")
+    end
   end
 
   UIDropDownMenu_SetText(UI.strataDD, tostring(w.strata or "(default)"))
@@ -513,6 +539,7 @@ local function CreateUI()
   f:SetSize(700, 560)
   f:SetPoint("CENTER")
   f:SetMovable(true)
+  if f.SetClampedToScreen then f:SetClampedToScreen(true) end
   f:EnableMouse(true)
   f:RegisterForDrag("LeftButton")
   f:SetScript("OnDragStart", f.StartMoving)
@@ -526,27 +553,27 @@ local function CreateUI()
 
   local title = f.TitleText or f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   title:ClearAllPoints()
-  title:SetPoint("TOPLEFT", 12, -10)
+  title:SetPoint("TOPLEFT", 14, -10)
   title:SetText("|cff00ccff[FAL]|r ArtLayer")
 
   local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-  close:SetPoint("TOPRIGHT", f, "TOPRIGHT", 2, 2)
+  close:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
 
   -- Widget row
-  local widgetLabel = CreateLabel(f, "Widget:")
+  local widgetLabel = CreateLabel(f, "Widget:", 60)
   widgetLabel:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -14)
 
   local widgetDD = CreateDropDown(f, 210)
-  widgetDD:SetPoint("LEFT", widgetLabel, "RIGHT", -10, -2)
+  widgetDD:SetPoint("LEFT", widgetLabel, "RIGHT", 8, -2)
 
   local addBtn = CreateButton(f, "New", 60, 22)
-  addBtn:SetPoint("LEFT", widgetDD, "RIGHT", -6, 2)
+  addBtn:SetPoint("LEFT", widgetDD, "RIGHT", 8, 2)
 
   local delBtn = CreateButton(f, "Delete", 60, 22)
-  delBtn:SetPoint("LEFT", addBtn, "RIGHT", 6, 0)
+  delBtn:SetPoint("LEFT", addBtn, "RIGHT", 8, 0)
 
   local refreshBtn = CreateButton(f, "Refresh", 70, 22)
-  refreshBtn:SetPoint("LEFT", delBtn, "RIGHT", 6, 0)
+  refreshBtn:SetPoint("LEFT", delBtn, "RIGHT", 8, 0)
 
   local noWidget = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   noWidget:SetPoint("TOPLEFT", widgetLabel, "BOTTOMLEFT", 0, -12)
@@ -561,40 +588,40 @@ local function CreateUI()
   enabled:SetPoint("TOPLEFT", 0, 0)
 
   local clickthrough = CreateCheck(controls, "Clickthrough")
-  clickthrough:SetPoint("LEFT", enabled, "RIGHT", 120, 0)
+  clickthrough:SetPoint("TOPLEFT", enabled, "TOPLEFT", 160, 0)
 
   local unlockDrag = CreateCheck(controls, "Unlock (drag)")
-  unlockDrag:SetPoint("TOPLEFT", enabled, "BOTTOMLEFT", 0, -8)
+  unlockDrag:SetPoint("TOPLEFT", enabled, "BOTTOMLEFT", 0, -6)
 
   local unlockHint = controls:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   unlockHint:SetPoint("LEFT", unlockDrag.text, "RIGHT", 8, 0)
   unlockHint:SetText("Drag the widget to reposition")
 
   local typeLabel = CreateLabel(controls, "Type:")
-  typeLabel:SetPoint("TOPLEFT", unlockDrag, "BOTTOMLEFT", 0, -10)
+  typeLabel:SetPoint("TOPLEFT", unlockDrag, "BOTTOMLEFT", 0, -8)
   local typeValue = controls:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   typeValue:SetPoint("LEFT", typeLabel, "RIGHT", 6, 0)
   typeValue:SetText("-")
 
   local alpha = CreateSlider(controls, "Alpha", 0, 1, 0.01)
-  alpha:SetPoint("TOPLEFT", typeLabel, "BOTTOMLEFT", 0, -28)
+  alpha:SetPoint("TOPLEFT", typeLabel, "BOTTOMLEFT", 0, -22)
   alpha:SetWidth(240)
 
   local scale = CreateSlider(controls, "Scale", 0.1, 3, 0.05)
-  scale:SetPoint("TOPLEFT", alpha, "BOTTOMLEFT", 0, -34)
+  scale:SetPoint("TOPLEFT", alpha, "BOTTOMLEFT", 0, -28)
   scale:SetWidth(240)
 
   -- Size
-  local sizeLabel = CreateLabel(controls, "Size (w/h):")
-  sizeLabel:SetPoint("TOPLEFT", scale, "BOTTOMLEFT", 0, -18)
+  local sizeLabel = CreateLabel(controls, "Size (w/h):", 110)
+  sizeLabel:SetPoint("TOPLEFT", scale, "BOTTOMLEFT", 0, -12)
   local wEB = CreateEditBox(controls, 60)
   wEB:SetPoint("LEFT", sizeLabel, "RIGHT", 8, 0)
   local hEB = CreateEditBox(controls, 60)
   hEB:SetPoint("LEFT", wEB, "RIGHT", 8, 0)
 
   -- Position
-  local posLabel = CreateLabel(controls, "Pos (point/x/y):")
-  posLabel:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", 0, -18)
+  local posLabel = CreateLabel(controls, "Pos (point/x/y):", 110)
+  posLabel:SetPoint("TOPLEFT", sizeLabel, "BOTTOMLEFT", 0, -12)
   local pointEB = CreateEditBox(controls, 90)
   pointEB:SetPoint("LEFT", posLabel, "RIGHT", 8, 0)
   local xEB = CreateEditBox(controls, 60)
@@ -669,27 +696,85 @@ local function CreateUI()
       local db = GetDB()
       local w = db and db.widgets and db.widgets[key]
       if type(w) == "table" then
-        local cx, cy
-        if self.GetCenter then
-          cx, cy = self:GetCenter()
+        local function Round(v)
+          v = tonumber(v) or 0
+          return math.floor(v + 0.5)
         end
-        local px, py
-        if UIParent and UIParent.GetCenter then
-          px, py = UIParent:GetCenter()
+
+        local function GetAnchorXY(frame, point)
+          point = tostring(point or "CENTER"):upper()
+          local x, y
+          if point:find("LEFT", 1, true) then
+            x = frame.GetLeft and frame:GetLeft() or nil
+          elseif point:find("RIGHT", 1, true) then
+            x = frame.GetRight and frame:GetRight() or nil
+          else
+            x = frame.GetCenter and select(1, frame:GetCenter()) or nil
+          end
+
+          if point:find("TOP", 1, true) then
+            y = frame.GetTop and frame:GetTop() or nil
+          elseif point:find("BOTTOM", 1, true) then
+            y = frame.GetBottom and frame:GetBottom() or nil
+          else
+            y = frame.GetCenter and select(2, frame:GetCenter()) or nil
+          end
+          return x, y
         end
-        if cx and cy and px and py then
-          w.point = "CENTER"
-          w.x = math.floor((cx - px) + 0.5)
-          w.y = math.floor((cy - py) + 0.5)
+
+        local function GuessNearestPoint(frame)
+          if not (UIParent and UIParent.GetLeft and frame and frame.GetLeft) then
+            return "CENTER"
+          end
+
+          local pl, pr = UIParent:GetLeft(), UIParent:GetRight()
+          local pb, pt = UIParent:GetBottom(), UIParent:GetTop()
+          local fl, fr = frame:GetLeft(), frame:GetRight()
+          local fb, ft = frame:GetBottom(), frame:GetTop()
+          if not (pl and pr and pb and pt and fl and fr and fb and ft) then
+            return "CENTER"
+          end
+
+          local dl, dr = math.abs(fl - pl), math.abs(pr - fr)
+          local db, dt = math.abs(fb - pb), math.abs(pt - ft)
+
+          local h = "CENTER"
+          if dl < dr then h = "LEFT" else h = "RIGHT" end
+          if math.min(dl, dr) > 40 then h = "CENTER" end
+
+          local v = "CENTER"
+          if db < dt then v = "BOTTOM" else v = "TOP" end
+          if math.min(db, dt) > 40 then v = "CENTER" end
+
+          if v == "CENTER" and h == "CENTER" then return "CENTER" end
+          return (v ~= "CENTER" and v or "") .. (h ~= "CENTER" and h or "")
+        end
+
+        -- Preserve an explicit point if the user set one; otherwise auto-snap to nearest edge/corner.
+        local point = tostring(w.point or "CENTER"):upper()
+        if point == "" then point = "CENTER" end
+        if point == "CENTER" then
+          point = GuessNearestPoint(self)
+        end
+
+        local ax, ay = GetAnchorXY(self, point)
+        local px, py = GetAnchorXY(UIParent, point)
+
+        if ax and ay and px and py then
+          w.point = point
+          w.x = Round(ax - px)
+          w.y = Round(ay - py)
         else
-          local p, _, _, x, y
+          -- Fallback: use current SetPoint offsets (should be UIParent-relative).
+          local p, rel, relPoint, x, y
           if self.GetPoint then
-            p, _, _, x, y = self:GetPoint(1)
+            p, rel, relPoint, x, y = self:GetPoint(1)
           end
           w.point = tostring(p or "CENTER")
-          w.x = math.floor((tonumber(x) or 0) + 0.5)
-          w.y = math.floor((tonumber(y) or 0) + 0.5)
+          w.x = Round(x)
+          w.y = Round(y)
         end
+
         pointEB:SetText(tostring(w.point or "CENTER"))
         xEB:SetText(tostring(w.x or 0))
         yEB:SetText(tostring(w.y or 0))
@@ -706,13 +791,20 @@ local function CreateUI()
 
   -- Right column: strata/layer/blend/texture
   local right = CreateFrame("Frame", nil, controls)
-  right:SetPoint("TOPLEFT", 270, 0)
-  right:SetPoint("TOPRIGHT", -6, 0)
+  -- Anchor from the right edge with an explicit size.
+  -- This prevents overlap with the left column (which can extend farther right than expected)
+  -- and avoids any template quirks around 0-size parents.
+  right:SetPoint("TOPRIGHT", controls, "TOPRIGHT", -6, 0)
+  right:SetSize(340, 280)
+  if right.SetClipsChildren then right:SetClipsChildren(false) end
+  if right.SetFrameLevel and controls and controls.GetFrameLevel then
+    right:SetFrameLevel((controls:GetFrameLevel() or 0) + 20)
+  end
 
   local strataLabel = CreateLabel(right, "Strata:")
   strataLabel:SetPoint("TOPLEFT", 0, 0)
   local strataDD = CreateDropDown(right, 160)
-  strataDD:SetPoint("LEFT", strataLabel, "RIGHT", -10, -2)
+  strataDD:SetPoint("LEFT", strataLabel, "RIGHT", 8, -2)
 
   local textureRow = CreateFrame("Frame", nil, right)
   textureRow:SetPoint("TOPLEFT", strataLabel, "BOTTOMLEFT", 0, -22)
@@ -733,18 +825,25 @@ local function CreateUI()
   local layerLabel = CreateLabel(layerRow, "Layer/Sub:")
   layerLabel:SetPoint("TOPLEFT", 0, 0)
   local layerDD = CreateDropDown(layerRow, 150)
-  layerDD:SetPoint("TOPLEFT", layerLabel, "BOTTOMLEFT", -16, -2)
+  layerDD:SetPoint("TOPLEFT", layerLabel, "BOTTOMLEFT", 0, -2)
   local subEB = CreateEditBox(layerRow, 60)
-  subEB:SetPoint("LEFT", layerDD, "RIGHT", -8, 2)
+  subEB:SetPoint("LEFT", layerDD, "RIGHT", 8, 2)
 
   local blendLabel = CreateLabel(layerRow, "Blend:")
-  blendLabel:SetPoint("TOPLEFT", layerDD, "BOTTOMLEFT", 16, -16)
+  blendLabel:SetPoint("TOPLEFT", layerDD, "BOTTOMLEFT", 0, -16)
   local blendDD = CreateDropDown(layerRow, 150)
-  blendDD:SetPoint("TOPLEFT", blendLabel, "BOTTOMLEFT", -16, -2)
+  blendDD:SetPoint("TOPLEFT", blendLabel, "BOTTOMLEFT", 0, -2)
 
   local hint = right:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   hint:SetPoint("TOPLEFT", layerRow, "BOTTOMLEFT", 0, -10)
   hint:SetText("Tip: blend + layer fixes some alpha issues")
+
+  -- Anchor point for any sections that should appear *after* the top controls.
+  -- We anchor to the bottom of the right column since it tends to be the tallest.
+  local afterTop = CreateFrame("Frame", nil, controls)
+  afterTop:SetSize(1, 1)
+  afterTop:SetPoint("TOP", hint, "BOTTOM", 0, -18)
+  afterTop:SetPoint("LEFT", controls, "LEFT", 0, 0)
 
   -- Wire behavior
   local function SaveAndApply()
@@ -841,6 +940,15 @@ local function CreateUI()
       end
     end
 
+    do
+      RemoveCondsOfType(widget.conds, "questCompleteHide")
+      local on = (UI.questHide and UI.questHide.GetChecked and UI.questHide:GetChecked()) and true or false
+      local id = UI.questId and UI.questId.GetText and tonumber(Trim(UI.questId:GetText())) or nil
+      if on and id then
+        table.insert(widget.conds, { type = "questCompleteHide", id = id })
+      end
+    end
+
     ApplySelected()
   end
 
@@ -891,26 +999,29 @@ local function CreateUI()
 
   -- Conditions
   local condLabel = CreateLabel(controls, "Conditions:")
-  condLabel:SetPoint("TOPLEFT", posLabel, "BOTTOMLEFT", 0, -18)
+  condLabel:SetPoint("TOPLEFT", afterTop, "TOPLEFT", 0, 0)
 
-  local factionLabel = CreateLabel(controls, "Faction:")
+  local factionLabel = CreateLabel(controls, "Faction:", 110)
   factionLabel:SetPoint("TOPLEFT", condLabel, "BOTTOMLEFT", 0, -10)
   local factionDD = CreateDropDown(controls, 140)
-  factionDD:SetPoint("LEFT", factionLabel, "RIGHT", -16, -2)
+  factionDD:SetPoint("LEFT", factionLabel, "RIGHT", 8, -2)
   UIDropDownMenu_SetText(factionDD, "Both")
 
+  local questHide = CreateCheck(controls, "Hide when quest complete")
+  questHide:SetPoint("TOPLEFT", factionLabel, "BOTTOMLEFT", 0, -12)
+  local questId = CreateEditBox(controls, 90)
+  questId:SetPoint("LEFT", questHide.text, "RIGHT", 8, 0)
+  questId:SetText("")
+
+  questHide:SetScript("OnClick", function()
+    SaveAndApply()
+  end)
+  EBApply(questId)
+
   local charsLabel = CreateLabel(controls, "Characters (one per line):")
-  charsLabel:SetPoint("TOPLEFT", factionLabel, "BOTTOMLEFT", 0, -14)
+  charsLabel:SetPoint("TOPLEFT", questHide, "BOTTOMLEFT", 0, -10)
   local chars = CreateMultiLineBox(controls, 240, 70)
   chars:SetPoint("TOPLEFT", charsLabel, "BOTTOMLEFT", 0, -6)
-
-  -- Keep the texture/layer controls visible even at odd UI scales by placing
-  -- the whole "right" section below the conditions block.
-  if right and right.ClearAllPoints and right.SetPoint then
-    right:ClearAllPoints()
-    right:SetPoint("TOPLEFT", chars, "BOTTOMLEFT", 0, -18)
-    right:SetPoint("BOTTOMRIGHT", controls, "BOTTOMRIGHT", -6, 0)
-  end
 
   if chars and chars.EditBox and chars.EditBox.SetScript then
     chars.EditBox:SetScript("OnEnterPressed", function(self)
@@ -975,6 +1086,27 @@ local function CreateUI()
       { "Raid Icon Triangle", "Interface\\TargetingFrame\\UI-RaidTargetingIcon_4" },
     }
 
+    local function GetAddonMediaTextures()
+      local list = ns and ns.MediaTextures
+      if type(list) ~= "table" then return nil end
+      local out = {}
+      for _, v in ipairs(list) do
+        if type(v) == "table" then
+          local label = tostring(v[1] or "")
+          local value = tostring(v[2] or "")
+          if label ~= "" and value ~= "" then
+            out[#out + 1] = { label, value }
+          end
+        elseif type(v) == "string" then
+          local s = tostring(v)
+          if s ~= "" then out[#out + 1] = { s, s } end
+        end
+      end
+      if not out[1] then return nil end
+      table.sort(out, function(a, b) return tostring(a[1]):lower() < tostring(b[1]):lower() end)
+      return out
+    end
+
     local function SetTexturePath(path)
       if texEB and texEB.SetText then
         texEB:SetText(tostring(path or ""))
@@ -993,6 +1125,16 @@ local function CreateUI()
             for _, p in ipairs(presets) do
               root:CreateButton(p[1], function() SetTexturePath(p[2]) end)
             end
+
+            local media = GetAddonMediaTextures()
+            if media and root.CreateTitle then
+              root:CreateTitle("Addon Media (.tga)")
+            end
+            if media then
+              for _, p in ipairs(media) do
+                root:CreateButton(p[1], function() SetTexturePath(p[2]) end)
+              end
+            end
           end
         end)
         return
@@ -1006,6 +1148,15 @@ local function CreateUI()
         for _, p in ipairs(presets) do
           menu[#menu + 1] = { text = p[1], notCheckable = true, func = function() SetTexturePath(p[2]) end }
         end
+
+        local media = GetAddonMediaTextures()
+        if media then
+          menu[#menu + 1] = { text = "Addon Media (.tga)", isTitle = true, notCheckable = true }
+          for _, p in ipairs(media) do
+            menu[#menu + 1] = { text = p[1], notCheckable = true, func = function() SetTexturePath(p[2]) end }
+          end
+        end
+
         UI._texMenuFrame = UI._texMenuFrame or CreateFrame("Frame", "FAL_TextureMenu", UIParent, "UIDropDownMenuTemplate")
         EasyMenu(menu, UI._texMenuFrame, btn, 0, 0, "MENU")
       end
@@ -1016,6 +1167,9 @@ local function CreateUI()
         GameTooltip:SetOwner(texPickBtn, "ANCHOR_RIGHT")
         GameTooltip:AddLine("Texture", 1, 1, 1)
         GameTooltip:AddLine("Pick a built-in texture preset.")
+        if ns and ns.MediaTextures then
+          GameTooltip:AddLine("Also lists this addon's media .tga textures.")
+        end
         GameTooltip:AddLine("You can also type a path manually:")
         GameTooltip:AddLine("Interface\\Buttons\\WHITE8X8", 0.8, 0.8, 0.8)
         GameTooltip:Show()
@@ -1180,6 +1334,8 @@ local function CreateUI()
     y = yEB,
 
     factionDD = factionDD,
+    questHide = questHide,
+    questId = questId,
     chars = chars,
 
     textureRow = textureRow,

@@ -467,6 +467,18 @@ local function ConditionSeen(db, cond)
   return false
 end
 
+local function IsQuestCompleted(questID)
+  questID = tonumber(questID)
+  if not questID then return false end
+  if C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted then
+    return C_QuestLog.IsQuestFlaggedCompleted(questID) and true or false
+  end
+  if IsQuestFlaggedCompleted then
+    return IsQuestFlaggedCompleted(questID) and true or false
+  end
+  return false
+end
+
 local function EvaluateWidget(db, widget)
   if not widget.enabled then return false, "disabled" end
   local conds = widget.conds
@@ -488,6 +500,8 @@ local function EvaluateWidget(db, widget)
       if want == "out" and inCombat then return false, "combat(out)" end
     elseif c.type == "player" then
       if not ConditionPlayer(c) then return false, "player" end
+    elseif c.type == "questCompleteHide" then
+      if IsQuestCompleted(c.id) then return false, "questComplete" end
     end
   end
 
@@ -1058,6 +1072,8 @@ frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("PLAYER_REGEN_DISABLED")
 frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 frame:RegisterEvent("UPDATE_PENDING_MAIL")
+frame:RegisterEvent("QUEST_TURNED_IN")
+frame:RegisterEvent("QUEST_LOG_UPDATE")
 frame:SetScript("OnEvent", function(_, event, arg1)
   if event == "ADDON_LOADED" and arg1 == ADDON then
     EnsureDB()
@@ -1073,7 +1089,7 @@ frame:SetScript("OnEvent", function(_, event, arg1)
   end
 
   -- Re-evaluate widgets on relevant events
-  if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" or event == "UPDATE_PENDING_MAIL" then
+  if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" or event == "UPDATE_PENDING_MAIL" or event == "QUEST_TURNED_IN" or event == "QUEST_LOG_UPDATE" then
     ApplyAllWidgets()
     return
   end
