@@ -1,15 +1,11 @@
----@diagnostic disable: undefined-global
+﻿---@diagnostic disable: undefined-global
 
--- Auto-generated-ish helper list for the UI texture picker.
---
--- WoW addons cannot enumerate files from disk at runtime, so if you add/remove
--- .tga files under the media folder, regenerate this list (see tools script).
+-- Auto-generated helper list for the UI texture picker.
+-- WoW addons cannot enumerate files at runtime; regenerate when media changes.
 
 local ADDON, ns = ...
 ns = ns or {}
 
--- Entries are { label, value } where value is what gets written into the
--- Texture field (it can be a bare filename; the addon resolves it to media/).
 ns.MediaTextures = {
   { "Alliance", "Alliance" },
   { "DNX", "DNX" },
@@ -17,7 +13,7 @@ ns.MediaTextures = {
   { "Horde_Crest11", "Horde_Crest11" },
   { "MailX", "MailX" },
   { "MailY", "MailY" },
-  { "Ak", "PB05_Ak" },
+  { "Aki", "PB05_Aki" },
   { "Anthea", "PB05_Anthea" },
   { "BurningSpirit", "PB05_BurningSpirit" },
   { "FlowingSpirit", "PB05_FlowingSpirit" },
@@ -25,7 +21,7 @@ ns.MediaTextures = {
   { "Mo'Ruk", "PB05_Mo'Ruk" },
   { "Nishi", "PB05_Nishi" },
   { "Shu", "PB05_Shu" },
-  { "ThunderSpirit", "PB05_ThunderSpirit" },
+  { "ThunderingSpirit", "PB05_ThunderingSpirit" },
   { "WhisperingSpirit", "PB05_WhisperingSpirit" },
   { "Zisshi", "PB05_Zisshi" },
   { "Ashlei", "PB06_Ashlei" },
@@ -47,3 +43,4 @@ ns.MediaTextures = {
   { "WoW7", "WoW7" },
   { "WoW8", "WoW8" },
 }
+

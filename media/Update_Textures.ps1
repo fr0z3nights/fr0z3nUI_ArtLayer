@@ -9,6 +9,16 @@ if (-not (Test-Path $mediaDir)) {
   throw "Media folder not found: $mediaDir"
 }
 
+function Escape-LuaString {
+  param([string]$Value)
+  if ($null -eq $Value) { return '' }
+  $slash = '\\'
+  $doubleSlash = '\\\\'
+  $quote = [string][char]34
+  $escapedQuote = $slash + $quote
+  return $Value.Replace($slash, $doubleSlash).Replace($quote, $escapedQuote)
+}
+
 $items = Get-ChildItem -Path $mediaDir -Filter '*.tga' -File | Sort-Object Name
 
 $lines = New-Object System.Collections.Generic.List[string]
@@ -29,9 +39,9 @@ foreach ($f in $items) {
     $label = $label -replace '^PB\d+_', ''
   }
 
-  $luaLabel = $label.Replace("\\", "\\\\").Replace("\"", "\\\"")
-  $luaValue = $name.Replace("\\", "\\\\").Replace("\"", "\\\"")
-  $lines.Add("  { \"$luaLabel\", \"$luaValue\" },")
+  $luaLabel = Escape-LuaString -Value $label
+  $luaValue = Escape-LuaString -Value $name
+  $lines.Add('  { "' + $luaLabel + '", "' + $luaValue + '" },')
 }
 
 $lines.Add('}')

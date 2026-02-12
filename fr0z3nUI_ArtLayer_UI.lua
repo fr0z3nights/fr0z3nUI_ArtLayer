@@ -559,6 +559,16 @@ local function CreateUI()
   local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
   close:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
 
+  local reloadBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  reloadBtn:SetSize(90, 22)
+  reloadBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 12)
+  reloadBtn:SetText("Reload UI")
+  reloadBtn:SetScript("OnClick", function()
+    local r = _G and _G["ReloadUI"]
+    if r then r() end
+  end)
+  f._reloadBtn = reloadBtn
+
   -- Widget row
   local widgetLabel = CreateLabel(f, "Widget:", 60)
   widgetLabel:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -14)
@@ -581,7 +591,7 @@ local function CreateUI()
 
   local controls = CreateFrame("Frame", nil, f)
   controls:SetPoint("TOPLEFT", noWidget, "BOTTOMLEFT", 0, -6)
-  controls:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 12)
+  controls:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 44)
 
   -- Left column basics
   local enabled = CreateCheck(controls, "Enabled")
