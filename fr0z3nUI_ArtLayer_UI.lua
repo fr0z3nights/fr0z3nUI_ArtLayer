@@ -536,6 +536,56 @@ local function CreateUI()
   CreateWidgetDialog()
 
   local f = CreateFrame("Frame", "fr0z3nUI_ArtLayer_Config", UIParent, "BasicFrameTemplateWithInset")
+
+  -- Allow closing with Escape.
+  do
+    local special = _G and _G["UISpecialFrames"]
+    if type(special) == "table" then
+      local name = "fr0z3nUI_ArtLayer_Config"
+      local exists = false
+      for i = 1, #special do
+        if special[i] == name then exists = true break end
+      end
+      if not exists and table and table.insert then
+        table.insert(special, name)
+      end
+    end
+  end
+
+  do
+    -- Unify styling: borderless + darker background (like FGO/FQT).
+    if f.NineSlice and f.NineSlice.Hide then f.NineSlice:Hide() end
+    if f.Bg and f.Bg.Hide then f.Bg:Hide() end
+    if f.TitleBg and f.TitleBg.Hide then f.TitleBg:Hide() end
+    if f.InsetBg and f.InsetBg.Hide then f.InsetBg:Hide() end
+    if f.Inset and f.Inset.Hide then f.Inset:Hide() end
+
+    local bg = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    bg:SetAllPoints(f)
+    bg:SetBackdrop({
+      bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+      tile = true,
+      tileSize = 16,
+      insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    bg:SetBackdropColor(0, 0, 0, 0.85)
+    bg:SetFrameLevel((f.GetFrameLevel and f:GetFrameLevel() or 0))
+    f._unifiedBG = bg
+
+    local tabBarBG = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    tabBarBG:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -4)
+    tabBarBG:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+    tabBarBG:SetHeight(26)
+    tabBarBG:SetBackdrop({
+      bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+      tile = true,
+      tileSize = 16,
+      insets = { left = 0, right = 0, top = 0, bottom = 0 },
+    })
+    tabBarBG:SetBackdropColor(0, 0, 0, 0.92)
+    tabBarBG:SetFrameLevel((f.GetFrameLevel and f:GetFrameLevel() or 0) + 1)
+    f._tabBarBG = tabBarBG
+  end
   f:SetSize(700, 560)
   f:SetPoint("CENTER")
   f:SetMovable(true)
@@ -553,11 +603,28 @@ local function CreateUI()
 
   local title = f.TitleText or f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   title:ClearAllPoints()
-  title:SetPoint("TOPLEFT", 14, -10)
   title:SetText("|cff00ccff[FAL]|r ArtLayer")
+  do
+    local fontPath, fontSize, fontFlags = title:GetFont()
+    if fontPath and fontSize then
+      title:SetFont(fontPath, fontSize + 2, fontFlags)
+    end
+  end
+
+  -- Keep the title above the tab bar background.
+  if title and title.SetParent and f._tabBarBG then
+    title:SetParent(f._tabBarBG)
+    title:ClearAllPoints()
+    title:SetPoint("LEFT", f._tabBarBG, "LEFT", 8, 0)
+  else
+    title:SetPoint("TOPLEFT", 12, -6)
+  end
 
   local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-  close:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+  close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -6, -6)
+  if close.SetFrameLevel and f.GetFrameLevel then
+    close:SetFrameLevel((f:GetFrameLevel() or 0) + 20)
+  end
 
   local reloadBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
   reloadBtn:SetSize(90, 22)
@@ -571,7 +638,11 @@ local function CreateUI()
 
   -- Widget row
   local widgetLabel = CreateLabel(f, "Widget:", 60)
-  widgetLabel:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -14)
+  if f._tabBarBG then
+    widgetLabel:SetPoint("TOPLEFT", f._tabBarBG, "BOTTOMLEFT", 8, -12)
+  else
+    widgetLabel:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -14)
+  end
 
   local widgetDD = CreateDropDown(f, 210)
   widgetDD:SetPoint("LEFT", widgetLabel, "RIGHT", 8, -2)
